@@ -18,7 +18,7 @@ public class UptakeSubsystem extends SubsystemBase {
   private final TalonFX rollerMotor;
   
   //Constants
-  private static final int UPTAKE_MOTOR_ID = 11;
+  private static final int UPTAKE_MOTOR_ID = 9;
   private static final int ROLLER_MOTOR_ID = 10;
   private static final String CAN_BUS = "canivore";
   private static final double UPTAKE_SPEED = 1.0;

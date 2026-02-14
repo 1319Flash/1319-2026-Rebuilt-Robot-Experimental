@@ -10,7 +10,6 @@ import static edu.wpi.first.units.Units.RotationsPerSecond;
 
 import com.ctre.phoenix6.swerve.SwerveModule.DriveRequestType;
 import com.ctre.phoenix6.swerve.SwerveRequest;
-import com.pathplanner.lib.auto.AutoBuilder;
 import com.pathplanner.lib.commands.FollowPathCommand;
 
 import edu.wpi.first.math.geometry.Rotation2d;
@@ -22,14 +21,11 @@ import edu.wpi.first.wpilibj2.command.button.CommandXboxController;
 import edu.wpi.first.wpilibj2.command.button.RobotModeTriggers;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine.Direction;
 import frc.robot.commands.AprilTagAlignCommand;
-import frc.robot.commands.ShootingCommands;
-import frc.robot.commands.auto.AutoRoutines;
 import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.limelight.LimelightSubsystem;
 import frc.robot.subsystems.shooter.FlyWheelSubsystem;
 import frc.robot.subsystems.shooter.HoodSubsystem;
-import frc.robot.subsystems.shooter.ShotCalculator;
 import frc.robot.subsystems.shooter.UptakeSubsystem;
 
 public class RobotContainer {
@@ -58,35 +54,19 @@ public class RobotContainer {
     private final CommandXboxController operatorController = new CommandXboxController(1);
 
     //Subsystems
-    // PRO FEATURE: Drivetrain now uses 250Hz odometry with FOC
     public final CommandSwerveDrivetrain drivetrain = TunerConstants.createDrivetrain();
     public final LimelightSubsystem limelightSubsystem = new LimelightSubsystem();
     public final FlyWheelSubsystem flyWheelSubsystem = new FlyWheelSubsystem();
     public final HoodSubsystem hoodSubsystem = new HoodSubsystem();
     public final UptakeSubsystem uptakeSubsystem = new UptakeSubsystem();
-    
-    // NEW: Shot calculator for distance-based shooting
-    public final ShotCalculator shotCalculator = new ShotCalculator();
 
     //Path follower - NOT final so we can initialize it in constructor
     private SendableChooser<Command> autoChooser;
 
     public RobotContainer() {
-        // PRO FEATURE: Connect limelight to drivetrain for vision measurement integration
         limelightSubsystem.setDrivetrain(drivetrain);
         
-        // Register named commands FIRST (before building auto chooser)
-        AutoRoutines.registerNamedCommands(
-            drivetrain,
-            limelightSubsystem,
-            hoodSubsystem,
-            flyWheelSubsystem,
-            uptakeSubsystem,
-            shotCalculator
-        );
-        
-        // Build auto chooser - PathPlanner will find your .auto files
-        configureAutoChooser();
+        SmartDashboard.putData("Auto Mode", autoChooser);
 
         configureBindings();
 
@@ -95,33 +75,6 @@ public class RobotContainer {
 
         // Home the hood on robot startup
         hoodSubsystem.homeCommand().schedule();
-    }
-    
-    /**
-     * Configures the autonomous chooser.
-     * PathPlanner will automatically find .auto files in deploy/pathplanner/autos/
-     */
-    private void configureAutoChooser() {
-        // Use PathPlanner's auto chooser - it finds all your .auto files automatically!
-        autoChooser = AutoBuilder.buildAutoChooser();
-        
-        // Add a simple "Shoot Only" option for testing
-        autoChooser.addOption(
-            "Shoot Only (No Drive)",
-            AutoRoutines.shootOnlyAuto(
-                drivetrain,
-                limelightSubsystem,
-                hoodSubsystem,
-                flyWheelSubsystem,
-                uptakeSubsystem,
-                shotCalculator
-            )
-        );
-        
-        SmartDashboard.putData("Auto Mode", autoChooser);
-        
-        System.out.println("Auto chooser configured - Named commands registered for PathPlanner");
-        System.out.println("Create .auto files in PathPlanner GUI to build autonomous routines!");
     }
 
     private void configureBindings() {
@@ -155,18 +108,18 @@ public class RobotContainer {
             Commands.runOnce(() -> speedMultiplier[0] = NORMAL_SPEED)
         );
 
-        //Brake mode
+        // Brake mode
         driverController.b().whileTrue(drivetrain.applyRequest(() -> brake));
-        //Points wheels in controller direction
+        // Points wheels in controller direction
         driverController.x().whileTrue(drivetrain.applyRequest(() ->
             point.withModuleDirection(new Rotation2d(-driverController.getLeftY(), -driverController.getLeftX()))
         ));
 
-        //Drives forwards
+        // Drives forwards
         driverController.povUp().whileTrue(drivetrain.applyRequest(() ->
             forwardStraight.withVelocityX(0.5).withVelocityY(0))
         );
-        //Drives backwards
+        // Drives backwards
         driverController.povDown().whileTrue(drivetrain.applyRequest(() ->
             forwardStraight.withVelocityX(-0.5).withVelocityY(0))
         );
@@ -184,7 +137,7 @@ public class RobotContainer {
 
         drivetrain.registerTelemetry(logger::telemeterize);
 
-        //Tracks AprilTag (rotation only - driver still controls translation)
+        // Tracks AprilTag
         driverController.rightBumper().whileTrue(
             new AprilTagAlignCommand(
                 drivetrain,
@@ -197,38 +150,20 @@ public class RobotContainer {
             )
         );
 
-        // ========== OPERATOR CONTROLS ==========
-        
-        // AUTO-AIM AND SHOOT - HOLD BUTTON
-        // Right trigger: Hold to auto-aim and shoot
-        // - Spins up shooter and adjusts hood
-        // - Once ready, starts feeding
-        // - Keeps shooting while held
-        // - Release to stop everything
+        //Shoot
         operatorController.rightTrigger().whileTrue(
-            ShootingCommands.autoAimAndShoot(
-                limelightSubsystem,
-                hoodSubsystem,
-                flyWheelSubsystem,
-                uptakeSubsystem,
-                shotCalculator
+            Commands.sequence(
+                flyWheelSubsystem.shootCommand(),
+                flyWheelSubsystem.waitUntilAtSpeed(),
+                uptakeSubsystem.runCommand()))
+        .onFalse(
+            Commands.parallel(
+                flyWheelSubsystem.stopCommand(),
+                uptakeSubsystem.stopCommand()
             )
         );
-        
-        // MANUAL SHOOT - HOLD BUTTON (backup mode)
-        // A button: Manual shooting with fixed speed
-        // Hold to shoot, release to stop
-        operatorController.a().whileTrue(
-            flyWheelSubsystem.shootCommand()
-            .alongWith(Commands.waitSeconds(1).andThen(uptakeSubsystem.runCommand()))
-        );
-        operatorController.a().onFalse(
-            flyWheelSubsystem.stopCommand()
-            .alongWith(uptakeSubsystem.stopCommand())
-        );
 
-        // Hood manual control (for fine-tuning during testing)
-        // Left stick Y always controls hood manually
+        // Hood manual control
         hoodSubsystem.setDefaultCommand(
             hoodSubsystem.manualControlCommand(() -> -operatorController.getLeftY() * 0.1)
         );
@@ -238,22 +173,11 @@ public class RobotContainer {
         operatorController.povLeft().onTrue(hoodSubsystem.closeShotCommand()); // Close shot preset
         operatorController.povDown().onTrue(hoodSubsystem.stowCommand());      // Stow position
 
-        // Manual hood home (if limit switch is triggered)
+        // Manual hood home 
         operatorController.back().onTrue(hoodSubsystem.homeCommand());
 
-        // Manual position reset (only use when AT the limit switch)
+        // Manual position reset
         operatorController.start().onTrue(hoodSubsystem.resetPositionCommand());
-        
-        // B button: Emergency stop all shooter mechanisms
-        operatorController.b().onTrue(
-            Commands.parallel(
-                flyWheelSubsystem.stopCommand(),
-                uptakeSubsystem.stopCommand(),
-                hoodSubsystem.stopCommand()
-            ).andThen(Commands.runOnce(() -> 
-                System.out.println("EMERGENCY STOP - All shooter mechanisms stopped")
-            ))
-        );
     }
 
     public Command getAutonomousCommand() {
