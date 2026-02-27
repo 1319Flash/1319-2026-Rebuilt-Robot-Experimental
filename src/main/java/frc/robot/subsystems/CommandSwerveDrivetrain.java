@@ -33,11 +33,7 @@ import edu.wpi.first.wpilibj2.command.Subsystem;
 import edu.wpi.first.wpilibj2.command.sysid.SysIdRoutine;
 import frc.robot.generated.TunerConstants.TunerSwerveDrivetrain;
 
-/**
- * Swerve drivetrain subsystem built on Phoenix 6 with full Pro feature support:
- * 250 Hz time-synchronized odometry, FOC drive, FusedCANcoder, and
- * distance-weighted vision measurement integration.
- */
+/** Swerve drivetrain subsystem built on Phoenix 6 with 250 Hz odometry and vision measurement integration. */
 public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Subsystem {
     private static final double kSimLoopPeriod = 0.004;
 
@@ -49,10 +45,8 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     private Notifier m_simNotifier = null;
     private double   m_lastSimTime;
 
-    // PathPlanner path-following request
     private final SwerveRequest.ApplyRobotSpeeds m_pathApplyRobotSpeeds = new SwerveRequest.ApplyRobotSpeeds();
 
-    // SysId characterization requests
     private final SwerveRequest.SysIdSwerveTranslation m_translationCharacterization = new SwerveRequest.SysIdSwerveTranslation();
     private final SwerveRequest.SysIdSwerveSteerGains  m_steerCharacterization       = new SwerveRequest.SysIdSwerveSteerGains();
     private final SwerveRequest.SysIdSwerveRotation    m_rotationCharacterization    = new SwerveRequest.SysIdSwerveRotation();
@@ -145,21 +139,19 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     }
 
     /**
-     * Configures critical signal update frequencies for all swerve modules and the Pigeon2.
-     * Odometry-critical signals run at 250 Hz; non-critical signals are throttled to save CAN bandwidth.
+     * Configures odometry-critical signals to 250 Hz and throttles non-critical
+     * signals to reduce CAN bus utilization.
      */
     private void configureProFeatures() {
         for (int i = 0; i < 4; i++) {
             var module = getModule(i);
 
-            // Odometry-critical signals at 250 Hz
             module.getDriveMotor().getPosition().setUpdateFrequency(250);
             module.getDriveMotor().getVelocity().setUpdateFrequency(250);
             module.getSteerMotor().getPosition().setUpdateFrequency(250);
             module.getEncoder().getPosition().setUpdateFrequency(250);
             module.getEncoder().getAbsolutePosition().setUpdateFrequency(250);
 
-            // Non-critical signals at reduced rates
             module.getDriveMotor().getMotorVoltage().setUpdateFrequency(50);
             module.getDriveMotor().getSupplyCurrent().setUpdateFrequency(50);
             module.getDriveMotor().getStatorCurrent().setUpdateFrequency(50);
@@ -170,11 +162,9 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
             module.getSteerMotor().getDeviceTemp().setUpdateFrequency(4);
         }
 
-        // Pigeon2 heading signals at 250 Hz
         getPigeon2().getYaw().setUpdateFrequency(250);
         getPigeon2().getAngularVelocityZWorld().setUpdateFrequency(250);
 
-        // Non-critical Pigeon2 signals at reduced rates
         getPigeon2().getAccelerationX().setUpdateFrequency(100);
         getPigeon2().getAccelerationY().setUpdateFrequency(100);
         getPigeon2().getTemperature().setUpdateFrequency(4);
@@ -221,7 +211,6 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
 
     @Override
     public void periodic() {
-        // Apply alliance-correct field perspective once DS is connected
         if (!m_hasAppliedOperatorPerspective || DriverStation.isDisabled()) {
             DriverStation.getAlliance().ifPresent(allianceColor -> {
                 setOperatorPerspectiveForward(
@@ -233,9 +222,8 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
             });
         }
 
-        // Key swerve metrics
-        SmartDashboard.putNumber("Swerve/OdometryHz",    1.0 / getState().OdometryPeriod);
-        SmartDashboard.putNumber("Swerve/TotalCurrent",  getTotalCurrentDraw());
+        SmartDashboard.putNumber("Swerve/OdometryHz",   1.0 / getState().OdometryPeriod);
+        SmartDashboard.putNumber("Swerve/TotalCurrent", getTotalCurrentDraw());
     }
 
     /** Returns the sum of all drive and steer motor stator currents. */
@@ -249,23 +237,19 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
     }
 
     /**
-     * Adds a vision measurement with dynamic standard deviations based on distance and tag count.
-     * Closer targets and more visible tags increase measurement trust.
+     * Adds a vision measurement to the pose estimator with caller-supplied standard deviations.
+     *
+     * @param visionRobotPoseMeters the pose reported by vision
+     * @param timestampSeconds      timestamp of the measurement in seconds
+     * @param xyStdDev              translational standard deviation in meters
+     * @param thetaStdDev           rotational standard deviation in radians
      */
-    public void addVisionMeasurementWithDistance(
+    public void addVisionMeasurement(
         Pose2d visionRobotPoseMeters,
         double timestampSeconds,
-        double distanceToTarget,
-        int tagCount
+        double xyStdDev,
+        double thetaStdDev
     ) {
-        double xyStdDev    = 0.01 + (distanceToTarget * 0.05);
-        double thetaStdDev = 0.01 + (distanceToTarget * 0.03);
-
-        if (tagCount >= 2) {
-            xyStdDev    *= 0.5;
-            thetaStdDev *= 0.5;
-        }
-
         addVisionMeasurement(
             visionRobotPoseMeters,
             timestampSeconds,
