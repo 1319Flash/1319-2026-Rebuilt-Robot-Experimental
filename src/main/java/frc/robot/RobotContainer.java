@@ -26,6 +26,8 @@ import frc.robot.subsystems.ClimberSubsystem;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.limelight.LimelightSubsystem;
 import frc.robot.subsystems.shooter.FlyWheelSubsystem;
+import frc.robot.subsystems.IntakeSubsystem;
+import frc.robot.subsystems.shooter.HoodSubsystem;
 import frc.robot.subsystems.shooter.UptakeSubsystem;
 
 public class RobotContainer {
@@ -64,6 +66,8 @@ public class RobotContainer {
     public final FlyWheelSubsystem       flyWheelSubsystem  = new FlyWheelSubsystem();
     public final UptakeSubsystem         uptakeSubsystem    = new UptakeSubsystem();
     public final ClimberSubsystem        climberSubsystem   = new ClimberSubsystem();
+    public final IntakeSubsystem         intakeSubsystem    = new IntakeSubsystem();
+    public final HoodSubsystem           hoodSubsystem      = new HoodSubsystem();
     // Telemetry
     private final Telemetry m_telemetry = new Telemetry(kMaxSpeed);
 
@@ -103,6 +107,18 @@ public class RobotContainer {
         );
         NamedCommands.registerCommand("Climb",
             climberSubsystem.toggleCommand()
+        );
+        
+        NamedCommands.registerCommand("ExtendIntake",
+            intakeSubsystem.extendCommand()
+        );
+
+        NamedCommands.registerCommand("RunIntake",
+            Commands.startEnd(
+                () -> intakeSubsystem.setSpeed(1.0),
+                () -> intakeSubsystem.stop(),
+                intakeSubsystem
+            )
         );
 
         m_autoChooser = AutoBuilder.buildAutoChooser();
@@ -196,6 +212,18 @@ public class RobotContainer {
                 uptakeSubsystem.stopCommand()
             )
         );
+        // Operator left trigger — hold to run intake, release to stop
+        m_operatorController.leftTrigger()
+            .onTrue(intakeSubsystem.runCommand())
+            .onFalse(intakeSubsystem.stopCommand());
+
+        // Operator select (back) button — toggle intake deploy/retract
+        m_operatorController.back()
+            .onTrue(intakeSubsystem.toggleCommand());
+
+        // Operator D-pad up — toggle hood angle
+        m_operatorController.povUp()
+            .onTrue(hoodSubsystem.toggleCommand());
 
         m_operatorController.start()
             .onTrue(climberSubsystem.toggleCommand());
