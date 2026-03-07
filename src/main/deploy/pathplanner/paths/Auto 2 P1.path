@@ -1,0 +1,61 @@
+{
+  "version": "2025.0",
+  "waypoints": [
+    {
+      "anchor": {
+        "x": 4.397807692307693,
+        "y": 6.011794871794872
+      },
+      "prevControl": null,
+      "nextControl": {
+        "x": 8.049064102564099,
+        "y": 4.988512820512822
+      },
+      "isLocked": false,
+      "linkedName": null
+    },
+    {
+      "anchor": {
+        "x": 7.711846153846155,
+        "y": 7.058333333333334
+      },
+      "prevControl": {
+        "x": 4.490833333333335,
+        "y": 8.081615384615382
+      },
+      "nextControl": null,
+      "isLocked": true,
+      "linkedName": "P4+P5"
+    }
+  ],
+  "rotationTargets": [],
+  "constraintZones": [],
+  "pointTowardsZones": [],
+  "eventMarkers": [
+    {
+      "name": "ExtendIntake",
+      "waypointRelativePos": 0.571428571428564,
+      "endWaypointRelativePos": null,
+      "command": null
+    }
+  ],
+  "globalConstraints": {
+    "maxVelocity": 5.12,
+    "maxAcceleration": 7.0,
+    "maxAngularVelocity": 540.0,
+    "maxAngularAcceleration": 720.0,
+    "nominalVoltage": 12.0,
+    "unlimited": false
+  },
+  "goalEndState": {
+    "velocity": 0,
+    "rotation": -90.0
+  },
+  "reversed": false,
+  "folder": "Auto 2",
+  "idealStartingState": {
+    "velocity": 0,
+    "rotation": 0.0
+  },
+  "useDefaultConstraints": true
+}

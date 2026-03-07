@@ -5,45 +5,39 @@
     "data": {
       "commands": [
         {
-          "type": "named",
+          "type": "path",
           "data": {
-            "name": "Shoot"
+            "pathName": "Auto 2 P1"
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "P1"
+            "pathName": "Auto 2 P2"
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "P2"
+            "pathName": "Auto 2 P3"
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": null
-          }
-        },
-        {
-          "type": "named",
-          "data": {
-            "name": "Shoot"
+            "pathName": "Auto 2 P4"
           }
         },
         {
           "type": "path",
           "data": {
-            "pathName": "P3"
+            "pathName": "Auto 2 P5"
           }
         },
         {
-          "type": "named",
+          "type": "path",
           "data": {
-            "name": "Climb"
+            "pathName": "Auto 2 P6"
           }
         }
       ]

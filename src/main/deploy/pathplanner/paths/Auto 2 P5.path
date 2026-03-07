@@ -1,0 +1,61 @@
+{
+  "version": "2025.0",
+  "waypoints": [
+    {
+      "anchor": {
+        "x": 8.618846153846155,
+        "y": 7.058333333333334
+      },
+      "prevControl": null,
+      "nextControl": {
+        "x": 8.665358974358975,
+        "y": 4.476871794871795
+      },
+      "isLocked": false,
+      "linkedName": "P7+P8"
+    },
+    {
+      "anchor": {
+        "x": 8.618846153846155,
+        "y": 4.488500000005813
+      },
+      "prevControl": {
+        "x": 8.642102564096753,
+        "y": 7.081589743595556
+      },
+      "nextControl": null,
+      "isLocked": false,
+      "linkedName": "P8+P9"
+    }
+  ],
+  "rotationTargets": [],
+  "constraintZones": [],
+  "pointTowardsZones": [],
+  "eventMarkers": [
+    {
+      "name": "IntakeBalls",
+      "waypointRelativePos": 0,
+      "endWaypointRelativePos": null,
+      "command": null
+    }
+  ],
+  "globalConstraints": {
+    "maxVelocity": 1.0,
+    "maxAcceleration": 7.0,
+    "maxAngularVelocity": 540.0,
+    "maxAngularAcceleration": 720.0,
+    "nominalVoltage": 12.0,
+    "unlimited": false
+  },
+  "goalEndState": {
+    "velocity": 0,
+    "rotation": -90.0
+  },
+  "reversed": false,
+  "folder": "Auto 2",
+  "idealStartingState": {
+    "velocity": 0,
+    "rotation": -89.22051367888147
+  },
+  "useDefaultConstraints": false
+}
