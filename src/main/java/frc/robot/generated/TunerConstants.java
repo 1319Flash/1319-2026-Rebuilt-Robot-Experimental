@@ -11,6 +11,7 @@ import com.ctre.phoenix6.CANBus;
 import com.ctre.phoenix6.configs.CANcoderConfiguration;
 import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
 import com.ctre.phoenix6.configs.MotorOutputConfigs;
+import com.ctre.phoenix6.configs.MountPoseConfigs;
 import com.ctre.phoenix6.configs.Pigeon2Configuration;
 import com.ctre.phoenix6.configs.Slot0Configs;
 import com.ctre.phoenix6.configs.TalonFXConfiguration;
@@ -124,7 +125,7 @@ public class TunerConstants {
     private static final CANcoderConfiguration encoderInitialConfigs = new CANcoderConfiguration();
     
     // Pigeon 2 configuration - can add filtering and other advanced configs here
-    private static final Pigeon2Configuration pigeonConfigs = new Pigeon2Configuration();
+    private static final Pigeon2Configuration pigeonConfigs = new Pigeon2Configuration().withMountPose(new MountPoseConfigs().withMountPoseYaw(0));
 
     // PRO FEATURE: CANivore CAN bus for time-synchronized signals
     // CRITICAL: Replace "CANivore" with YOUR CANivore's actual name from Tuner X
@@ -260,7 +261,7 @@ public class TunerConstants {
      */
     public static CommandSwerveDrivetrain createDrivetrain() {
         return new CommandSwerveDrivetrain(
-            DrivetrainConstants, 100.0, FrontLeft, FrontRight, BackLeft, BackRight
+            DrivetrainConstants, 250.0, FrontLeft, FrontRight, BackLeft, BackRight
         );
     }
 

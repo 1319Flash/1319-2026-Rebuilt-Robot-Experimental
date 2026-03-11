@@ -150,7 +150,7 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         SwerveModuleConstants<?, ?, ?>... modules
     ) {
         // PRO FEATURE: 100Hz odometry with CANivore for stable, high-performance operation
-        super(drivetrainConstants, 100.0, modules);
+        super(drivetrainConstants, 250.0, modules);
         configureProFeatures();
         if (Utils.isSimulation()) {
             startSimThread();
@@ -233,15 +233,15 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
             var module = getModule(i);
             
             // Drive motor signals - 100Hz is optimal for SWYFT systems
-            module.getDriveMotor().getPosition().setUpdateFrequency(100);
-            module.getDriveMotor().getVelocity().setUpdateFrequency(100);
+            module.getDriveMotor().getPosition().setUpdateFrequency(250);
+            module.getDriveMotor().getVelocity().setUpdateFrequency(250);
             
             // Steer motor signals - 100Hz for precise control
-            module.getSteerMotor().getPosition().setUpdateFrequency(100);
+            module.getSteerMotor().getPosition().setUpdateFrequency(250);
             
             // PRO FEATURE: FusedCANcoder updates at 100Hz (internally fuses at 1000Hz)
-            module.getCANcoder().getPosition().setUpdateFrequency(100);
-            module.getCANcoder().getAbsolutePosition().setUpdateFrequency(100);
+            module.getEncoder().getPosition().setUpdateFrequency(250);
+            module.getEncoder().getAbsolutePosition().setUpdateFrequency(250);
             
             // Lower frequency for non-critical signals to reduce CAN traffic through SWYFT hubs
             module.getDriveMotor().getMotorVoltage().setUpdateFrequency(20);
@@ -256,8 +256,8 @@ public class CommandSwerveDrivetrain extends TunerSwerveDrivetrain implements Su
         }
         
         // Pigeon2 signals - 100Hz for heading
-        getPigeon2().getYaw().setUpdateFrequency(100);
-        getPigeon2().getAngularVelocityZWorld().setUpdateFrequency(100);
+        getPigeon2().getYaw().setUpdateFrequency(250);
+        getPigeon2().getAngularVelocityZWorld().setUpdateFrequency(250);
         
         // Lower frequency for non-critical Pigeon2 signals
         getPigeon2().getAccelerationX().setUpdateFrequency(20);

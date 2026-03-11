@@ -19,11 +19,11 @@ public class Robot extends TimedRobot {
         UsbCamera frontCamera = CameraServer.startAutomaticCapture("Front Camera", 0);
         frontCamera.setResolution(320, 240);
         frontCamera.setFPS(15);
-
+        /* 
         UsbCamera backCamera = CameraServer.startAutomaticCapture("Back Camera", 1);
         backCamera.setResolution(320, 240);
         backCamera.setFPS(15);
-
+        */
         SignalLogger.start();
     }
 
@@ -67,6 +67,7 @@ public class Robot extends TimedRobot {
         m_robotContainer.limelightSubsystem.setAutoMode(false);
         m_robotContainer.limelightSubsystem.setVisionUpdatesEnabled(true);
 
+        m_robotContainer.limelightSubsystem.resetPoseFromVision();
         if (m_autonomousCommand != null) {
             m_autonomousCommand.cancel();
         }

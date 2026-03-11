@@ -13,7 +13,7 @@ public class UptakeSubsystem extends SubsystemBase {
 
     private static final int    kUptakeMotorId = 10;
     private static final String kCanBus        = "";
-    private static final double kUptakeSpeed   = 1.0;
+    private static final double kUptakeSpeed   = -1.0;
 
     // Current limits — uptake is more likely to jam so limits are lower than flywheel
     private static final double kStatorCurrentLimit = 40.0;

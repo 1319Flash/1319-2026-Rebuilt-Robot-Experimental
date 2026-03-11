@@ -2,6 +2,7 @@ package frc.robot.subsystems.limelight;
 
 import edu.wpi.first.math.geometry.Pose2d;
 import edu.wpi.first.wpilibj.Timer;
+import edu.wpi.first.wpilibj.smartdashboard.Field2d;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.SubsystemBase;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
@@ -10,10 +11,13 @@ import frc.robot.subsystems.limelight.LimelightHelpers.RawFiducial;
 /** Manages Limelight vision, MegaTag2 odometry fusion, distance measurement, and AprilTag alignment. */
 public class LimelightSubsystem extends SubsystemBase {
 
-    private static final String kLimelightName = "limelight";
+    private static final String kLimelightName = "limelight-flash";
 
     // Proportional gain for rotation-to-target alignment
-    private static final double kPAim = 0.035;
+    private static final double kPAim = 0.06;
+
+    //field
+     private final Field2d m_visionField = new Field2d();
 
     // Rejection thresholds
     private static final double kMaxAmbiguity          = 0.2;   // single-tag ambiguity ratio (0=perfect, 1=ambiguous)
@@ -41,6 +45,7 @@ public class LimelightSubsystem extends SubsystemBase {
     private CommandSwerveDrivetrain m_drivetrain;
     private boolean m_visionUpdatesEnabled = true;
     private boolean m_isAutoMode           = false;
+    private boolean m_poseInitialized      = false;
 
     private double m_lastYawDegrees = 0.0;
     private double m_lastTimestamp  = 0.0;
@@ -49,6 +54,7 @@ public class LimelightSubsystem extends SubsystemBase {
 
     public LimelightSubsystem() {
         LimelightHelpers.setLEDMode_ForceOff(kLimelightName);
+        SmartDashboard.putData( "Vision/Field", m_visionField);
     }
 
     /** Sets the drivetrain reference required for MegaTag2 odometry fusion. */
@@ -211,7 +217,8 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        if (m_drivetrain != null) {
+        
+        if (m_drivetrain != null && m_poseInitialized) {
             Pose2d odom    = m_drivetrain.getState().Pose;
             double jump    = odom.getTranslation().getDistance(est.pose.getTranslation());
             double maxJump = m_isAutoMode ? kMaxPoseJumpAuto : kMaxPoseJumpTeleop;
@@ -360,8 +367,8 @@ public class LimelightSubsystem extends SubsystemBase {
         }
 
         double[] stdDevs = computeStdDevs(mt2);
-        m_drivetrain.addVisionMeasurement(mt2.pose, mt2.timestampSeconds, stdDevs[0], stdDevs[1]);
-
+        m_drivetrain.addVisionMeasurement(mt2.pose, mt2.timestampSeconds);
+        m_poseInitialized = true;
         SmartDashboard.putBoolean("Vision/Active",      true);
         SmartDashboard.putNumber("Vision/TagCount",     mt2.tagCount);
         SmartDashboard.putNumber("Vision/AvgTagDist_m", mt2.avgTagDist);
@@ -374,6 +381,7 @@ public class LimelightSubsystem extends SubsystemBase {
             SmartDashboard.putNumber("Vision/Ambiguity", mt2.rawFiducials[0].ambiguity);
             SmartDashboard.putNumber("Vision/TagID",     mt2.rawFiducials[0].id);
         }
+
     }
 
     private void putStatus(String msg) {
@@ -391,10 +399,25 @@ public class LimelightSubsystem extends SubsystemBase {
     public void periodic() {
         try {
             processVisionMeasurements();
-
+            
             SmartDashboard.putBoolean("Vision/HasTarget",       hasValidTarget());
             SmartDashboard.putNumber("Vision/HorizontalOffset", getHorizontalOffset());
             SmartDashboard.putNumber("Vision/Distance",         getDistanceToTarget());
+
+            LimelightHelpers.PoseEstimate mt2 = getMegaTag2Estimate();
+
+            if(mt2 != null && mt2.tagCount > 0){
+                m_visionField.setRobotPose(mt2.pose);
+                SmartDashboard.putNumber("Vision/PoseX",        mt2.pose.getX());
+                SmartDashboard.putNumber("Vision/PoseY",        mt2.pose.getY());
+                SmartDashboard.putNumber("Vision/TagCount",     mt2.tagCount);
+
+            }else{
+                SmartDashboard.putNumber("Vision/PoseX",        0);
+                SmartDashboard.putNumber("Vision/PoseY",        0.0);
+                SmartDashboard.putNumber("Vision/TagCount",     0.0);
+            }
+            
         } catch (Exception e) {
             // Prevent a Limelight error from crashing the robot
         }

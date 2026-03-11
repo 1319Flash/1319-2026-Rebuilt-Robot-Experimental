@@ -13,8 +13,6 @@ import com.pathplanner.lib.auto.NamedCommands;
 import com.pathplanner.lib.commands.FollowPathCommand;
 
 import edu.wpi.first.math.geometry.Rotation2d;
-import edu.wpi.first.wpilibj.Compressor;
-import edu.wpi.first.wpilibj.PneumaticsModuleType;
 import edu.wpi.first.wpilibj.smartdashboard.SendableChooser;
 import edu.wpi.first.wpilibj.smartdashboard.SmartDashboard;
 import edu.wpi.first.wpilibj2.command.Command;
@@ -77,9 +75,6 @@ public class RobotContainer {
     private final SendableChooser<Command> m_autoChooser;
 
     public RobotContainer() {
-        // Clear any sticky faults on the CTRE PCM
-        new Compressor(PneumaticsModuleType.CTREPCM).clearAllStickyFaults();
-
         limelightSubsystem.setDrivetrain(drivetrain);
 
         NamedCommands.registerCommand("ShootClose",
@@ -228,8 +223,18 @@ public class RobotContainer {
         );
         // Operator left trigger — hold to run intake, release to stop
         m_operatorController.leftTrigger()
-            .onTrue(intakeSubsystem.runCommand())
-            .onFalse(intakeSubsystem.stopCommand());
+            .onTrue(
+                Commands.parallel(
+                    intakeSubsystem.runCommand(), 
+                    uptakeSubsystem.runCommand()
+                )
+            )
+            .onFalse(
+                Commands.parallel(
+                    intakeSubsystem.stopCommand(),
+                    uptakeSubsystem.stopCommand()
+                )
+            );
 
         m_operatorController.back()
                 .onTrue(intakeSubsystem.reverseCommand())
