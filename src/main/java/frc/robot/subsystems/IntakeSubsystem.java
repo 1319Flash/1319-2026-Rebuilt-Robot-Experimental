@@ -33,8 +33,8 @@ public class IntakeSubsystem extends SubsystemBase {
     // Jam detection — motor is considered jammed if velocity stays below
     // threshold while running for longer than kJamTimeSeconds
     private static final double kJamVelocityThresholdRps = 1.0;  // tune: watch Intake/Velocity while running normally
-    private static final double kJamTimeSeconds           = 0.3;  // how long near-zero velocity before declaring a jam
-    private static final double kEjectTimeSeconds         = 0.5;  // how long to reverse to clear the jam
+    private static final double kJamTimeSeconds           = 0.5;  // how long near-zero velocity before declaring a jam
+    private static final double kEjectTimeSeconds         = 0.8;  // how long to reverse to clear the jam
 
     private enum IntakeState { STOPPED, RUNNING, EJECTING }
 
