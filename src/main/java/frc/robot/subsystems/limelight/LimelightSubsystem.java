@@ -11,21 +11,18 @@ import frc.robot.subsystems.limelight.LimelightHelpers.RawFiducial;
 /** Manages Limelight vision, MegaTag2 odometry fusion, distance measurement, and AprilTag alignment. */
 public class LimelightSubsystem extends SubsystemBase {
 
-    private static final String kLimelightName = "limelight-flash";
+    private static final String kLimelightName = "limelight";
 
     // Proportional gain for rotation-to-target alignment
-    private static final double kPAim = 0.06;
-
-    //field
-     private final Field2d m_visionField = new Field2d();
+    private static final double kPAim = 0.035;
 
     // Rejection thresholds
-    private static final double kMaxAmbiguity          = 0.2;   // single-tag ambiguity ratio (0=perfect, 1=ambiguous)
-    private static final double kMaxSingleTagDistance  = 4.0;   // meters
-    private static final double kMaxMultiTagDistance   = 6.0;   // meters
-    private static final double kMaxPoseJumpTeleop     = 0.75;  // meters
-    private static final double kMaxPoseJumpAuto       = 0.5;   // meters
-    private static final double kMaxRotationDegPerSec  = 720.0; // deg/s
+    private static final double kMaxAmbiguity         = 0.2;   // single-tag ambiguity ratio (0=perfect, 1=ambiguous)
+    private static final double kMaxSingleTagDistance = 4.0;   // meters
+    private static final double kMaxMultiTagDistance  = 6.0;   // meters
+    private static final double kMaxPoseJumpTeleop    = 0.75;  // meters
+    private static final double kMaxPoseJumpAuto      = 0.5;   // meters
+    private static final double kMaxRotationDegPerSec = 720.0; // deg/s
 
     // 2026 field dimensions (meters)
     private static final double kFieldLengthMeters = 17.548;
@@ -42,19 +39,30 @@ public class LimelightSubsystem extends SubsystemBase {
     // Frames to skip after a mode change before applying vision corrections (~1 sec at 50 Hz)
     private static final int kWarmupFrames = 50;
 
+    // Minimum quality thresholds for an auto start pose reset —
+    // stricter than normal fusion since we are committing to this as the starting pose
+    private static final int    kAutoResetMinTags  = 2;
+    private static final double kAutoResetMaxDist  = 3.5;  // meters
+    private static final double kAutoResetMaxAmbig = 0.15; // tighter than kMaxAmbiguity
+
     private CommandSwerveDrivetrain m_drivetrain;
     private boolean m_visionUpdatesEnabled = true;
     private boolean m_isAutoMode           = false;
-    private boolean m_poseInitialized      = false;
 
     private double m_lastYawDegrees = 0.0;
     private double m_lastTimestamp  = 0.0;
     private double m_rotDegPerSec   = 0.0;
     private int    m_frameCount     = 0;
 
+    // Cached each loop to avoid double NetworkTables reads
+    private LimelightHelpers.PoseEstimate m_latestMt2 = null;
+
+    // Field widget for Elastic — shows raw vision pose alongside odometry pose
+    private final Field2d m_visionField = new Field2d();
+
     public LimelightSubsystem() {
         LimelightHelpers.setLEDMode_ForceOff(kLimelightName);
-        SmartDashboard.putData( "Vision/Field", m_visionField);
+        SmartDashboard.putData("Vision/Field", m_visionField);
     }
 
     /** Sets the drivetrain reference required for MegaTag2 odometry fusion. */
@@ -103,16 +111,16 @@ public class LimelightSubsystem extends SubsystemBase {
     }
 
     /**
-     * Returns distance from the robot to the primary AprilTag in meters.
-     * Uses distToRobot from the 3D fiducial solve, which requires the camera
-     * pose to be configured in the Limelight web UI.
+     * Returns distance from the camera lens to the primary AprilTag in meters.
+     * Uses distToCamera from the 3D fiducial solve — matches tape measure calibration
+     * data measured from the camera lens, not the robot center.
      *
      * @return distance in meters, or -1.0 if no tag is visible
      */
     public double getDistanceToTarget() {
         RawFiducial[] fiducials = LimelightHelpers.getRawFiducials(kLimelightName);
         if (fiducials.length == 0) return -1.0;
-        return fiducials[0].distToRobot;
+        return fiducials[0].distToCamera;
     }
 
     /**
@@ -136,9 +144,9 @@ public class LimelightSubsystem extends SubsystemBase {
         return -getHorizontalOffset() * kPAim * maxAngularRate;
     }
 
-    /** Returns the latest MegaTag2 pose estimate in the WPILib Blue alliance frame. */
+    /** Returns the latest cached MegaTag2 pose estimate. Updated once per loop in periodic(). */
     public LimelightHelpers.PoseEstimate getMegaTag2Estimate() {
-        return LimelightHelpers.getBotPoseEstimate_wpiBlue_MegaTag2(kLimelightName);
+        return m_latestMt2;
     }
 
     /**
@@ -161,6 +169,7 @@ public class LimelightSubsystem extends SubsystemBase {
                 m_rotDegPerSec = Math.abs(delta / dt);
             }
         }
+
         m_lastYawDegrees = yaw;
         m_lastTimestamp  = now;
 
@@ -170,7 +179,7 @@ public class LimelightSubsystem extends SubsystemBase {
 
     /**
      * Returns true if the pose estimate passes all rejection criteria.
-     * Logs the rejection reason to SmartDashboard.
+     * Logs the rejection reason to SmartDashboard via Vision/Status.
      */
     private boolean isValidVisionMeasurement(LimelightHelpers.PoseEstimate est) {
         if (est.tagCount == 0) {
@@ -217,8 +226,7 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        
-        if (m_drivetrain != null && m_poseInitialized) {
+        if (m_drivetrain != null) {
             Pose2d odom    = m_drivetrain.getState().Pose;
             double jump    = odom.getTranslation().getDistance(est.pose.getTranslation());
             double maxJump = m_isAutoMode ? kMaxPoseJumpAuto : kMaxPoseJumpTeleop;
@@ -258,23 +266,16 @@ public class LimelightSubsystem extends SubsystemBase {
         return new double[]{ Math.min(xy, 10.0), Math.min(theta, 10.0) };
     }
 
-    // Minimum quality thresholds for an auto start pose reset.
-    // Stricter than normal fusion since we are committing to this as the starting pose.
-    private static final int    kAutoResetMinTags    = 2;
-    private static final double kAutoResetMaxDist    = 3.5; // meters
-    private static final double kAutoResetMaxAmbig   = 0.15; // tighter than normal kMaxAmbiguity
-
     /**
      * Attempts to reset the drivetrain pose using a fresh MegaTag2 estimate.
      *
-     * <p>Intended to be called once at the start of autonomousInit(), before the auto
-     * command is scheduled. Because periodic() has not yet run, this method seeds
-     * the Limelight orientation manually rather than relying on the normal loop.
+     * <p>Intended to be called once in autonomousInit() and teleopInit() before any
+     * commands are scheduled. Seeds the Limelight orientation manually since periodic()
+     * has not yet run.
      *
-     * <p>Requires at least {@value kAutoResetMinTags} tags within
-     * {@value kAutoResetMaxDist} m. Skips the warmup, pose-jump, and rotation-speed
-     * checks that apply to normal Kalman filter corrections, since those are not
-     * relevant to a hard pose reset from a stationary starting position.
+     * <p>Requires at least {@value kAutoResetMinTags} tags within {@value kAutoResetMaxDist} m.
+     * Skips the warmup, pose-jump, and rotation-speed checks since those are irrelevant
+     * for a stationary hard pose reset.
      *
      * @return true if a valid estimate was found and the pose was reset, false otherwise
      */
@@ -284,12 +285,11 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        // Seed orientation manually — periodic() hasn't run yet so seedOrientation()
-        // hasn't been called. We use the Pigeon2 yaw via the drivetrain state.
         double yaw = m_drivetrain.getState().Pose.getRotation().getDegrees();
         LimelightHelpers.SetRobotOrientation(kLimelightName, yaw, 0, 0, 0, 0, 0);
 
-        LimelightHelpers.PoseEstimate est = LimelightHelpers.getBotPoseEstimate_wpiBlue_MegaTag2(kLimelightName);
+        LimelightHelpers.PoseEstimate est =
+            LimelightHelpers.getBotPoseEstimate_wpiBlue_MegaTag2(kLimelightName);
 
         if (est == null) {
             SmartDashboard.putString("AutoStart/PoseReset", "No estimate");
@@ -297,7 +297,6 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        // Require multiple tags for a confident starting pose
         if (est.tagCount < kAutoResetMinTags) {
             SmartDashboard.putString("AutoStart/PoseReset",
                 "Too few tags: " + est.tagCount + " (need " + kAutoResetMinTags + ")");
@@ -305,7 +304,6 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        // Reject if tags are too far away
         if (est.avgTagDist > kAutoResetMaxDist) {
             SmartDashboard.putString("AutoStart/PoseReset",
                 "Tags too far: " + String.format("%.1f", est.avgTagDist) + "m");
@@ -313,7 +311,6 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        // Reject high-ambiguity single-tag estimates
         if (est.tagCount == 1 && est.rawFiducials.length > 0
                 && est.rawFiducials[0].ambiguity > kAutoResetMaxAmbig) {
             SmartDashboard.putString("AutoStart/PoseReset",
@@ -322,9 +319,9 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        // Reject poses outside the field
         double px = est.pose.getX();
         double py = est.pose.getY();
+
         if (px < -kFieldMarginMeters || px > kFieldLengthMeters + kFieldMarginMeters
                 || py < -kFieldMarginMeters || py > kFieldWidthMeters + kFieldMarginMeters
                 || (px == 0.0 && py == 0.0)) {
@@ -334,10 +331,9 @@ public class LimelightSubsystem extends SubsystemBase {
             return false;
         }
 
-        // All checks passed — reset the pose
         m_drivetrain.resetPose(est.pose);
 
-        // Reset the warmup counter so normal Kalman corrections start fresh
+        // Reset warmup so normal Kalman corrections start fresh
         m_frameCount = 0;
 
         SmartDashboard.putString("AutoStart/PoseReset",
@@ -359,29 +355,32 @@ public class LimelightSubsystem extends SubsystemBase {
         m_frameCount++;
         seedOrientation();
 
-        LimelightHelpers.PoseEstimate mt2 = getMegaTag2Estimate();
+        // Fetch once and cache — reused in periodic() for always-on telemetry
+        m_latestMt2 = LimelightHelpers.getBotPoseEstimate_wpiBlue_MegaTag2(kLimelightName);
 
-        if (mt2 == null || !isValidVisionMeasurement(mt2)) {
+        if (m_latestMt2 == null || !isValidVisionMeasurement(m_latestMt2)) {
             SmartDashboard.putBoolean("Vision/Active", false);
             return;
         }
 
-        double[] stdDevs = computeStdDevs(mt2);
-        m_drivetrain.addVisionMeasurement(mt2.pose, mt2.timestampSeconds);
-        m_poseInitialized = true;
+        double[] stdDevs = computeStdDevs(m_latestMt2);
+        m_drivetrain.addVisionMeasurement(
+            m_latestMt2.pose,
+            m_latestMt2.timestampSeconds,
+            stdDevs[0],
+            stdDevs[1]
+        );
+
         SmartDashboard.putBoolean("Vision/Active",      true);
-        SmartDashboard.putNumber("Vision/TagCount",     mt2.tagCount);
-        SmartDashboard.putNumber("Vision/AvgTagDist_m", mt2.avgTagDist);
+        SmartDashboard.putNumber("Vision/AvgTagDist_m", m_latestMt2.avgTagDist);
         SmartDashboard.putNumber("Vision/XY_StdDev",    stdDevs[0]);
         SmartDashboard.putNumber("Vision/Theta_StdDev", stdDevs[1]);
-        SmartDashboard.putNumber("Vision/PoseX",        mt2.pose.getX());
-        SmartDashboard.putNumber("Vision/PoseY",        mt2.pose.getY());
         SmartDashboard.putNumber("Vision/RotSpeed_dps", m_rotDegPerSec);
-        if (mt2.tagCount == 1 && mt2.rawFiducials.length > 0) {
-            SmartDashboard.putNumber("Vision/Ambiguity", mt2.rawFiducials[0].ambiguity);
-            SmartDashboard.putNumber("Vision/TagID",     mt2.rawFiducials[0].id);
-        }
 
+        if (m_latestMt2.tagCount == 1 && m_latestMt2.rawFiducials.length > 0) {
+            SmartDashboard.putNumber("Vision/Ambiguity", m_latestMt2.rawFiducials[0].ambiguity);
+            SmartDashboard.putNumber("Vision/TagID",     m_latestMt2.rawFiducials[0].id);
+        }
     }
 
     private void putStatus(String msg) {
@@ -399,25 +398,25 @@ public class LimelightSubsystem extends SubsystemBase {
     public void periodic() {
         try {
             processVisionMeasurements();
-            
+
+            // Always-on telemetry — publishes every loop regardless of rejection filter
             SmartDashboard.putBoolean("Vision/HasTarget",       hasValidTarget());
             SmartDashboard.putNumber("Vision/HorizontalOffset", getHorizontalOffset());
             SmartDashboard.putNumber("Vision/Distance",         getDistanceToTarget());
 
-            LimelightHelpers.PoseEstimate mt2 = getMegaTag2Estimate();
-
-            if(mt2 != null && mt2.tagCount > 0){
-                m_visionField.setRobotPose(mt2.pose);
-                SmartDashboard.putNumber("Vision/PoseX",        mt2.pose.getX());
-                SmartDashboard.putNumber("Vision/PoseY",        mt2.pose.getY());
-                SmartDashboard.putNumber("Vision/TagCount",     mt2.tagCount);
-
-            }else{
-                SmartDashboard.putNumber("Vision/PoseX",        0);
-                SmartDashboard.putNumber("Vision/PoseY",        0.0);
-                SmartDashboard.putNumber("Vision/TagCount",     0.0);
+            // Use cached m_latestMt2 — avoids a second NetworkTables read this loop
+            if (m_latestMt2 != null) {
+                SmartDashboard.putNumber("Vision/TagCount", m_latestMt2.tagCount);
+                SmartDashboard.putNumber("Vision/PoseX",    m_latestMt2.pose.getX());
+                SmartDashboard.putNumber("Vision/PoseY",    m_latestMt2.pose.getY());
+                if (m_latestMt2.tagCount > 0) {
+                    m_visionField.setRobotPose(m_latestMt2.pose);
+                }
+            } else {
+                SmartDashboard.putNumber("Vision/TagCount", 0);
+                SmartDashboard.putNumber("Vision/PoseX",    0.0);
+                SmartDashboard.putNumber("Vision/PoseY",    0.0);
             }
-            
         } catch (Exception e) {
             // Prevent a Limelight error from crashing the robot
         }

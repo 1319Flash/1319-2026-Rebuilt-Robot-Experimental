@@ -3,13 +3,13 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 2.5999051008357474,
-        "y": 2.7492763938261735
+        "x": 2.6,
+        "y": 2.749
       },
       "prevControl": null,
       "nextControl": {
-        "x": 0.9752669039145911,
-        "y": 0.2854211150652417
+        "x": 0.9753792095837743,
+        "y": 0.2851332436755647
       },
       "isLocked": false,
       "linkedName": "A3 P2+P3"
@@ -20,11 +20,11 @@
         "y": 2.9
       },
       "prevControl": {
-        "x": 1.137046709741131,
+        "x": 1.1370467097411312,
         "y": 0.24247940174255245
       },
       "nextControl": null,
-      "isLocked": true,
+      "isLocked": false,
       "linkedName": null
     }
   ],

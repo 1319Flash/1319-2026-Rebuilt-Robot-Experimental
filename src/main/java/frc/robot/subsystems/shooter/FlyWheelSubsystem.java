@@ -4,7 +4,6 @@ import com.ctre.phoenix6.configs.TalonFXConfiguration;
 import com.ctre.phoenix6.controls.Follower;
 import com.ctre.phoenix6.controls.VelocityVoltage;
 import com.ctre.phoenix6.hardware.TalonFX;
-import com.ctre.phoenix6.signals.InvertedValue;
 import com.ctre.phoenix6.signals.MotorAlignmentValue;
 import com.ctre.phoenix6.signals.NeutralModeValue;
 
@@ -17,25 +16,23 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
  *
  * Velocity model: v(d) = 32.165 + 10.599d (linear, least squares fit)
  * Calibration data (limelight lens to AprilTag center):
- *   0.94 m → 42.5 RPS
- *   1.73 m → 50.0 RPS
- *   2.67 m → 60.0 RPS
- *   3.05 m → 65.0 RPS
+ *   0.94 m -> 42.5 RPS
+ *   1.73 m -> 50.0 RPS
+ *   2.67 m -> 60.0 RPS
+ *   3.05 m -> 65.0 RPS
  */
-public class FlyWheelSubsystem extends SubsystemBase {
+public class FlywheelSubsystem extends SubsystemBase {
     // Hardware
     private final TalonFX m_shooterMotor1;
     private final TalonFX m_shooterMotor2;
-    private final TalonFX m_shooterMotor3;
     private final VelocityVoltage m_velocityRequest;
 
     // CAN IDs
     private static final int    kMotor1Id = 11;
     private static final int    kMotor2Id = 12;
-    private static final int    kMotor3Id = 13;
     private static final String kCanBus   = "";
 
-    // PID gains — kP is constant across all velocities
+    // PID / FF gains
     private static final double kP = 0.5;
     private static final double kI = 0.0;
     private static final double kD = 0.0;
@@ -43,11 +40,11 @@ public class FlyWheelSubsystem extends SubsystemBase {
     private static final double kV = 0.133;
     private static final double kA = 0.01;
 
-    // Current limits — protects motors from damage under stall or jam conditions
+    // Current limits
     private static final double kStatorCurrentLimit = 80.0;
     private static final double kSupplyCurrentLimit = 60.0;
 
-    // Linear velocity model coefficients: v = kVelocityIntercept + kVelocitySlope * d
+    // Linear velocity model: v = kVelocityIntercept + kVelocitySlope * d
     private static final double kVelocityIntercept = 32.165;
     private static final double kVelocitySlope     = 10.599;
 
@@ -62,10 +59,9 @@ public class FlyWheelSubsystem extends SubsystemBase {
     // State
     private double m_targetVelocity = 0.0;
 
-    public FlyWheelSubsystem() {
+    public FlywheelSubsystem() {
         m_shooterMotor1 = new TalonFX(kMotor1Id, kCanBus);
         m_shooterMotor2 = new TalonFX(kMotor2Id, kCanBus);
-        m_shooterMotor3 = new TalonFX(kMotor3Id, kCanBus);
         m_velocityRequest = new VelocityVoltage(0).withSlot(0);
 
         configureMotors();
@@ -82,7 +78,6 @@ public class FlyWheelSubsystem extends SubsystemBase {
         config.Slot0.kA = kA;
 
         config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-        config.MotorOutput.Inverted = InvertedValue.Clockwise_Positive;
 
         config.CurrentLimits.StatorCurrentLimit       = kStatorCurrentLimit;
         config.CurrentLimits.StatorCurrentLimitEnable = true;
@@ -91,27 +86,16 @@ public class FlyWheelSubsystem extends SubsystemBase {
 
         m_shooterMotor1.getConfigurator().apply(config);
 
-        // Motor 2 follows motor 1 — apply current limits independently
+        // Motor 2 follows motor 1 — apply config independently before setting follower
         TalonFXConfiguration motor2Config = new TalonFXConfiguration();
+        motor2Config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
         motor2Config.CurrentLimits.StatorCurrentLimit       = kStatorCurrentLimit;
         motor2Config.CurrentLimits.StatorCurrentLimitEnable = true;
         motor2Config.CurrentLimits.SupplyCurrentLimit       = kSupplyCurrentLimit;
         motor2Config.CurrentLimits.SupplyCurrentLimitEnable = true;
-        motor2Config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
 
         m_shooterMotor2.getConfigurator().apply(motor2Config);
         m_shooterMotor2.setControl(new Follower(kMotor1Id, MotorAlignmentValue.Opposed));
-
-        // Motor 3 follows motor 1 — same configuration as motor 2
-        TalonFXConfiguration motor3Config = new TalonFXConfiguration();
-        motor3Config.CurrentLimits.StatorCurrentLimit       = kStatorCurrentLimit;
-        motor3Config.CurrentLimits.StatorCurrentLimitEnable = true;
-        motor3Config.CurrentLimits.SupplyCurrentLimit       = kSupplyCurrentLimit;
-        motor3Config.CurrentLimits.SupplyCurrentLimitEnable = true;
-        motor3Config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
-
-        m_shooterMotor3.getConfigurator().apply(motor3Config);
-        m_shooterMotor3.setControl(new Follower(kMotor1Id, MotorAlignmentValue.Opposed));
     }
 
     @Override
@@ -127,7 +111,12 @@ public class FlyWheelSubsystem extends SubsystemBase {
         return m_shooterMotor1.getVelocity().getValueAsDouble();
     }
 
+    /**
+     * Returns true only when actively commanded to a valid velocity AND within tolerance.
+     * Returns false when stopped to prevent waitUntilAtSpeed() passing immediately.
+     */
     public boolean isAtSpeed() {
+        if (m_targetVelocity < kMinVelocityRps) return false;
         return Math.abs(m_targetVelocity - getCurrentVelocity()) < kVelocityToleranceRps;
     }
 
@@ -135,7 +124,7 @@ public class FlyWheelSubsystem extends SubsystemBase {
 
     /**
      * Calculates target velocity for a given distance using the linear model.
-     * v(d) = 32.165 + 10.599d
+     * v(d) = 32.165 + 10.599d, clamped to [kMinVelocityRps, kMaxVelocityRps].
      */
     private double calculateVelocityForDistance(double distanceMeters) {
         double velocity = kVelocityIntercept + kVelocitySlope * distanceMeters;

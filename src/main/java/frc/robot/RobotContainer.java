@@ -25,14 +25,12 @@ import frc.robot.generated.TunerConstants;
 import frc.robot.subsystems.ClimberSubsystem;
 import frc.robot.subsystems.CommandSwerveDrivetrain;
 import frc.robot.subsystems.limelight.LimelightSubsystem;
-import frc.robot.subsystems.shooter.FlyWheelSubsystem;
-import frc.robot.subsystems.IntakeSubsystem;
-
+import frc.robot.subsystems.shooter.FlywheelSubsystem;
 import frc.robot.subsystems.shooter.UptakeSubsystem;
 
 public class RobotContainer {
     // Max speeds
-    private final double kMaxSpeed = TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
+    private final double kMaxSpeed       = TunerConstants.kSpeedAt12Volts.in(MetersPerSecond);
     private final double kMaxAngularRate = RotationsPerSecond.of(0.75).in(RadiansPerSecond);
 
     // Speed multiplier levels
@@ -49,9 +47,8 @@ public class RobotContainer {
         .withRotationalDeadband(kMaxAngularRate * 0.1)
         .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
 
-    private final SwerveRequest.SwerveDriveBrake m_brake = new SwerveRequest.SwerveDriveBrake();
-
-    private final SwerveRequest.PointWheelsAt m_pointWheels = new SwerveRequest.PointWheelsAt();
+    private final SwerveRequest.SwerveDriveBrake m_brake       = new SwerveRequest.SwerveDriveBrake();
+    private final SwerveRequest.PointWheelsAt    m_pointWheels = new SwerveRequest.PointWheelsAt();
 
     private final SwerveRequest.RobotCentric m_robotCentricNudge = new SwerveRequest.RobotCentric()
         .withDriveRequestType(DriveRequestType.OpenLoopVoltage);
@@ -61,12 +58,11 @@ public class RobotContainer {
     private final CommandXboxController m_operatorController = new CommandXboxController(1);
 
     // Subsystems
-    public final CommandSwerveDrivetrain drivetrain      = TunerConstants.createDrivetrain();
+    public final CommandSwerveDrivetrain drivetrain         = TunerConstants.createDrivetrain();
     public final LimelightSubsystem      limelightSubsystem = new LimelightSubsystem();
-    public final FlyWheelSubsystem       flyWheelSubsystem  = new FlyWheelSubsystem();
+    public final FlywheelSubsystem       flywheelSubsystem  = new FlywheelSubsystem();
     public final UptakeSubsystem         uptakeSubsystem    = new UptakeSubsystem();
     public final ClimberSubsystem        climberSubsystem   = new ClimberSubsystem();
-    public final IntakeSubsystem         intakeSubsystem    = new IntakeSubsystem();
 
     // Telemetry
     private final Telemetry m_telemetry = new Telemetry(kMaxSpeed);
@@ -77,34 +73,51 @@ public class RobotContainer {
     public RobotContainer() {
         limelightSubsystem.setDrivetrain(drivetrain);
 
+        registerNamedCommands();
+
+        // "Do Nothing" is the safe default — create a PathPlanner auto with this name
+        // containing no paths and no commands to ensure no unexpected auto runs
+        m_autoChooser = AutoBuilder.buildAutoChooser("Do Nothing");
+        SmartDashboard.putData("Auto Mode", m_autoChooser);
+
+        configureBindings();
+
+        FollowPathCommand.warmupCommand().schedule();
+    }
+
+    private void registerNamedCommands() {
+        // SpinUp — triggered mid-path via PathPlanner event marker on far shot paths
+        // so the flywheel is already at speed when the path ends
+        NamedCommands.registerCommand("SpinUp",
+            flywheelSubsystem.shootAtVelocity(65.0)
+        );
+
         NamedCommands.registerCommand("ShootClose",
             Commands.sequence(
-                flyWheelSubsystem.shootAtVelocity(42.5),
-                flyWheelSubsystem.waitUntilAtSpeed(),
+                flywheelSubsystem.shootAtVelocity(42.5),
+                flywheelSubsystem.waitUntilAtSpeed(),
                 Commands.deadline(
                     Commands.waitSeconds(5.0),
                     uptakeSubsystem.runCommand()
                 ),
                 Commands.parallel(
-                    flyWheelSubsystem.stopCommand(),
+                    flywheelSubsystem.stopCommand(),
                     uptakeSubsystem.stopCommand()
                 )
             )
         );
 
-        NamedCommands.registerCommand("SpinUp",
-            flyWheelSubsystem.shootAtVelocity(60.0) // change RPS per shot position
-        );
-
+        // ShootFar expects SpinUp to have already been triggered mid-path.
+        // Runs flywheel and uptake together for 5 seconds then stops both.
         NamedCommands.registerCommand("ShootFar",
             Commands.sequence(
-                flyWheelSubsystem.waitUntilAtSpeed(),
                 Commands.deadline(
                     Commands.waitSeconds(5.0),
-                    uptakeSubsystem.runCommand()
+                    uptakeSubsystem.runCommand(),
+                    flywheelSubsystem.shootAtVelocity(65.0)
                 ),
                 Commands.parallel(
-                    flyWheelSubsystem.stopCommand(),
+                    flywheelSubsystem.stopCommand(),
                     uptakeSubsystem.stopCommand()
                 )
             )
@@ -113,28 +126,6 @@ public class RobotContainer {
         NamedCommands.registerCommand("Climb",
             climberSubsystem.toggleCommand()
         );
-        
-        NamedCommands.registerCommand("Dump",
-           intakeSubsystem.reverseCommand());
-
-        NamedCommands.registerCommand("ExtendIntake",
-            intakeSubsystem.extendCommand()
-        );
-
-        NamedCommands.registerCommand("RunIntake",
-            Commands.startEnd(
-                () -> intakeSubsystem.setSpeed(.67),
-                () -> intakeSubsystem.stop(),
-                intakeSubsystem
-            )
-        );
-
-        m_autoChooser = AutoBuilder.buildAutoChooser();
-        SmartDashboard.putData("Auto Mode", m_autoChooser);
-
-        configureBindings();
-
-        FollowPathCommand.warmupCommand().schedule();
     }
 
     private void configureBindings() {
@@ -204,63 +195,25 @@ public class RobotContainer {
             )
         );
 
-        // Operator right trigger — distance-based shot
+        // Operator right trigger — distance-based shot using limelight
         m_operatorController.rightTrigger().whileTrue(
             Commands.sequence(
                 Commands.defer(() -> {
                     double distance = limelightSubsystem.getDistanceToTargetSafe();
-                    return flyWheelSubsystem.shootAtDistance(distance);
-                }, Set.of(flyWheelSubsystem)),
-                flyWheelSubsystem.waitUntilAtSpeed(),
+                    return flywheelSubsystem.shootAtDistance(distance);
+                }, Set.of(flywheelSubsystem)),
+                flywheelSubsystem.waitUntilAtSpeed(),
                 uptakeSubsystem.runCommand()
             )
         ).onFalse(
             Commands.parallel(
-                flyWheelSubsystem.stopCommand(),
-                uptakeSubsystem.stopCommand()
-            )
-        );
-        // Operator left trigger — hold to run intake, release to stop
-        m_operatorController.leftTrigger()
-            .onTrue(
-                Commands.parallel(
-                    intakeSubsystem.runCommand(), 
-                    uptakeSubsystem.runCommand()
-                )
-            )
-            .onFalse(
-                Commands.parallel(
-                    intakeSubsystem.stopCommand(),
-                    uptakeSubsystem.stopCommand()
-                )
-            );
-
-        m_operatorController.back()
-                .onTrue(intakeSubsystem.reverseCommand())
-                .onFalse(intakeSubsystem.stopCommand());
-
-        // Operator select (back) button — toggle intake deploy/retract
-        m_operatorController.povUp()
-            .onTrue(intakeSubsystem.toggleCommand());
-
-
-
-        // Operator right bumper — fixed-speed shot (no limelight)
-        m_operatorController.rightBumper().whileTrue(
-            Commands.sequence(
-                flyWheelSubsystem.shootAtVelocity(50.0),
-                flyWheelSubsystem.waitUntilAtSpeed(),
-                uptakeSubsystem.runCommand()
-            )
-        ).onFalse(
-            Commands.parallel(
-                flyWheelSubsystem.stopCommand(),
+                flywheelSubsystem.stopCommand(),
                 uptakeSubsystem.stopCommand()
             )
         );
 
-        m_operatorController.start()
-            .onTrue(climberSubsystem.toggleCommand());
+        // Operator start — climber toggle
+        m_operatorController.start().onTrue(climberSubsystem.toggleCommand());
     }
 
     public Command getAutonomousCommand() {
