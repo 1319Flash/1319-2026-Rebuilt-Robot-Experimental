@@ -3,13 +3,13 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 2.234092526690392,
-        "y": 2.469537366548043
+        "x": 2.6,
+        "y": 2.749
       },
       "prevControl": null,
       "nextControl": {
-        "x": 1.1796915776986956,
-        "y": 0.29618030842230203
+        "x": 1.2702451761332554,
+        "y": 0.7323209547023382
       },
       "isLocked": false,
       "linkedName": "A4 P3+P4"
@@ -24,7 +24,7 @@
         "y": 0.29618030842230203
       },
       "nextControl": null,
-      "isLocked": false,
+      "isLocked": true,
       "linkedName": null
     }
   ],
@@ -61,7 +61,7 @@
   },
   "goalEndState": {
     "velocity": 0,
-    "rotation": -90.84252426074042
+    "rotation": -90.84252426074043
   },
   "reversed": false,
   "folder": "Auto 4",

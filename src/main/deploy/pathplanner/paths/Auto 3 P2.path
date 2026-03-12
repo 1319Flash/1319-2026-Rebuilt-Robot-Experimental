@@ -3,13 +3,13 @@
   "waypoints": [
     {
       "anchor": {
-        "x": 0.5018623962040341,
-        "y": 0.6727520759193351
+        "x": 0.395590909090909,
+        "y": 0.6543636363636369
       },
       "prevControl": null,
       "nextControl": {
-        "x": 1.501862396204034,
-        "y": 0.6727520759193348
+        "x": 1.395590909090909,
+        "y": 0.6543636363636367
       },
       "isLocked": false,
       "linkedName": "A3 P1+P2"
@@ -24,7 +24,7 @@
         "y": 2.351186239609643
       },
       "nextControl": null,
-      "isLocked": false,
+      "isLocked": true,
       "linkedName": "A3 P2+P3"
     }
   ],
@@ -42,7 +42,14 @@
       "name": "Point Towards Zone"
     }
   ],
-  "eventMarkers": [],
+  "eventMarkers": [
+    {
+      "name": "SpinUp",
+      "waypointRelativePos": 0.7,
+      "endWaypointRelativePos": 1.0,
+      "command": null
+    }
+  ],
   "globalConstraints": {
     "maxVelocity": 3.0,
     "maxAcceleration": 7.0,
