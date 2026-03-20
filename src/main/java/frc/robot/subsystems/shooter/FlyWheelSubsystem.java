@@ -14,54 +14,62 @@ import edu.wpi.first.wpilibj2.command.SubsystemBase;
 /**
  * Controls the dual-motor flywheel shooter.
  *
- * Velocity model: v(d) = 32.165 + 10.599d (linear, least squares fit)
- * Calibration data (limelight lens to AprilTag center):
+ * Motor 1 is the primary — runs velocity PID via VelocityVoltage control.
+ * Motor 2 follows motor 1 in the opposite direction (opposed) via Phoenix Follower.
+ *
+ * Velocity model (recalibrate after any shooter mechanical change):
+ *   v(d) = kVelocityIntercept + kVelocitySlope * d   (linear least squares fit)
+ *   Output clamped to [kMinVelocityRps, kMaxVelocityRps]
+ *
+ * Current calibration data (LL2 lens to hub AprilTag center):
  *   0.94 m -> 42.5 RPS
  *   1.73 m -> 50.0 RPS
  *   2.67 m -> 60.0 RPS
  *   3.05 m -> 65.0 RPS
+ *
+ * Non-drivetrain motors run on the RIO CAN bus (kCanBus = "").
  */
 public class FlywheelSubsystem extends SubsystemBase {
-    // Hardware
-    private final TalonFX m_shooterMotor1;
-    private final TalonFX m_shooterMotor2;
-    private final VelocityVoltage m_velocityRequest;
+    private final TalonFX          m_shooterMotor1;
+    private final TalonFX          m_shooterMotor2;
+    private final VelocityVoltage  m_velocityRequest;
 
-    // CAN IDs
+    // CAN IDs — non-drivetrain motors are on the RIO bus ("")
     private static final int    kMotor1Id = 11;
-    private static final int    kMotor2Id = 12;
+    private static final int    kMotor2Id = 12; // defined for documentation; follower references kMotor1Id
     private static final String kCanBus   = "";
 
-    // PID / FF gains
-    private static final double kP = 0.5;
-    private static final double kI = 0.0;
-    private static final double kD = 0.0;
-    private static final double kS = 0.2;
-    private static final double kV = 0.133;
-    private static final double kA = 0.01;
+    // PID / FF gains — tune feedforward (kS, kV, kA) before kP
+    // See Phase 2 tuning document for step-by-step procedure
+    private static final double kP = 0.5;  // proportional gain
+    private static final double kI = 0.0;  // integral (leave at 0)
+    private static final double kD = 0.0;  // derivative (leave at 0)
+    private static final double kS = 0.2;  // static friction voltage
+    private static final double kV = 0.133; // voltage per RPS
+    private static final double kA = 0.01;  // voltage per RPS/s acceleration
 
-    // Current limits
-    private static final double kStatorCurrentLimit = 80.0;
-    private static final double kSupplyCurrentLimit = 60.0;
+    // Current limits — protects motors under stall or during jams
+    private static final double kStatorCurrentLimit = 80.0; // amps
+    private static final double kSupplyCurrentLimit = 60.0; // amps
 
-    // Linear velocity model: v = kVelocityIntercept + kVelocitySlope * d
-    private static final double kVelocityIntercept = 32.165;
-    private static final double kVelocitySlope     = 10.599;
+    // Velocity model coefficients — update after recalibration
+    private static final double kVelocityIntercept = 32.165; // RPS at 0 m
+    private static final double kVelocitySlope     = 10.599; // RPS per meter
 
-    // Velocity limits
+    // Velocity bounds — clamped output of the model
     private static final double kMinVelocityRps = 30.0;
     private static final double kMaxVelocityRps = 75.0;
 
-    // At-speed tolerance and safety timeout
-    private static final double kVelocityToleranceRps  = 2.0;
-    private static final double kAtSpeedTimeoutSeconds = 3.0;
+    // isAtSpeed() tolerance and auto-only safety timeout
+    private static final double kVelocityToleranceRps  = 2.0;  // RPS
+    private static final double kAtSpeedTimeoutSeconds = 3.0;  // seconds
 
-    // State
+    // Current commanded velocity — tracked to prevent isAtSpeed() being true when stopped
     private double m_targetVelocity = 0.0;
 
     public FlywheelSubsystem() {
-        m_shooterMotor1 = new TalonFX(kMotor1Id, kCanBus);
-        m_shooterMotor2 = new TalonFX(kMotor2Id, kCanBus);
+        m_shooterMotor1   = new TalonFX(kMotor1Id, kCanBus);
+        m_shooterMotor2   = new TalonFX(kMotor2Id, kCanBus);
         m_velocityRequest = new VelocityVoltage(0).withSlot(0);
 
         configureMotors();
@@ -86,9 +94,10 @@ public class FlywheelSubsystem extends SubsystemBase {
 
         m_shooterMotor1.getConfigurator().apply(config);
 
-        // Motor 2 follows motor 1 — apply config independently before setting follower
+        // Motor 2 must have its own config applied BEFORE setControl(Follower)
+        // otherwise it runs with factory defaults (no current limits, wrong neutral mode)
         TalonFXConfiguration motor2Config = new TalonFXConfiguration();
-        motor2Config.MotorOutput.NeutralMode = NeutralModeValue.Coast;
+        motor2Config.MotorOutput.NeutralMode             = NeutralModeValue.Coast;
         motor2Config.CurrentLimits.StatorCurrentLimit       = kStatorCurrentLimit;
         motor2Config.CurrentLimits.StatorCurrentLimitEnable = true;
         motor2Config.CurrentLimits.SupplyCurrentLimit       = kSupplyCurrentLimit;
@@ -105,26 +114,32 @@ public class FlywheelSubsystem extends SubsystemBase {
         SmartDashboard.putBoolean("Shooter/AtSpeed",       isAtSpeed());
     }
 
-    // ========== Getters ==========
+    // =========================================================================
+    // Getters
+    // =========================================================================
 
+    /** Returns the current flywheel velocity in rotations per second. */
     public double getCurrentVelocity() {
         return m_shooterMotor1.getVelocity().getValueAsDouble();
     }
 
     /**
-     * Returns true only when actively commanded to a valid velocity AND within tolerance.
-     * Returns false when stopped to prevent waitUntilAtSpeed() passing immediately.
+     * Returns true only when a valid velocity is commanded AND velocity is within tolerance.
+     * Returns false when stopped so waitUntilAtSpeed() cannot pass immediately at 0 RPS.
      */
     public boolean isAtSpeed() {
         if (m_targetVelocity < kMinVelocityRps) return false;
         return Math.abs(m_targetVelocity - getCurrentVelocity()) < kVelocityToleranceRps;
     }
 
-    // ========== Private Helpers ==========
+    // =========================================================================
+    // Private helpers
+    // =========================================================================
 
     /**
-     * Calculates target velocity for a given distance using the linear model.
-     * v(d) = 32.165 + 10.599d, clamped to [kMinVelocityRps, kMaxVelocityRps].
+     * Maps a distance to a flywheel velocity using the linear model.
+     * v(d) = kVelocityIntercept + kVelocitySlope * d
+     * Clamped to [kMinVelocityRps, kMaxVelocityRps].
      */
     private double calculateVelocityForDistance(double distanceMeters) {
         double velocity = kVelocityIntercept + kVelocitySlope * distanceMeters;
@@ -145,28 +160,35 @@ public class FlywheelSubsystem extends SubsystemBase {
         m_shooterMotor1.set(0);
     }
 
-    // ========== Commands ==========
+    // =========================================================================
+    // Commands
+    // =========================================================================
 
-    /** Spins the flywheel to the correct velocity for the given distance in meters. */
+    /** Spins up to the model-calculated velocity for the given distance in meters. */
     public Command shootAtDistance(double distanceMeters) {
         return runOnce(() -> setVelocityForDistance(distanceMeters));
     }
 
-    /** Spins the flywheel to a specific velocity in RPS. */
+    /** Spins up to a specific velocity in RPS. Use for fixed-speed named commands. */
     public Command shootAtVelocity(double velocityRps) {
         return runOnce(() -> setVelocity(velocityRps));
     }
 
-    /** Stops the flywheel. */
+    /** Stops the flywheel and clears the target velocity. */
     public Command stopCommand() {
         return runOnce(this::stop);
     }
 
-    /**
-     * Waits until the flywheel reaches target speed.
-     * Times out after {@value kAtSpeedTimeoutSeconds} seconds as a safety measure.
-     */
+    /** Waits until isAtSpeed() returns true. */
     public Command waitUntilAtSpeed() {
-        return run(() -> {}).until(this::isAtSpeed).withTimeout(kAtSpeedTimeoutSeconds);
+        return run(() -> {}).until(this::isAtSpeed);
+    }
+
+    /**
+     * Waits until isAtSpeed() returns true, but times out in auto so the routine
+     * can fail safe instead of hanging forever.
+     */
+    public Command waitUntilAtSpeedWithTimeout() {
+        return waitUntilAtSpeed().withTimeout(kAtSpeedTimeoutSeconds);
     }
 }

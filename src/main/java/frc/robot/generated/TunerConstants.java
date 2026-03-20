@@ -86,7 +86,7 @@ public class TunerConstants {
     // The stator current at which the wheels start to slip;
     // This needs to be tuned to your individual robot
     // For Kraken X60: 120A is a good starting point
-    private static final Current kSlipCurrent = Amps.of(120);
+    private static final Current kSlipCurrent = Amps.of(80);
 
     // PRO FEATURE: Advanced current limiting for Kraken X60 motors
     // These configs prevent brownouts while maximizing performance

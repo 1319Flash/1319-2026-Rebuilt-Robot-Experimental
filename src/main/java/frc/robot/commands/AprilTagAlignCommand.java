@@ -52,7 +52,7 @@ public class AprilTagAlignCommand extends Command {
 
     @Override
     public void initialize() {
-        m_limelight.setLEDsOn();
+        m_limelight.setFrontLEDsOn();
     }
 
     @Override
@@ -76,7 +76,7 @@ public class AprilTagAlignCommand extends Command {
 
     @Override
     public void end(boolean interrupted) {
-        m_limelight.setLEDsOff();
+        m_limelight.setFrontLEDsOff();
         m_drivetrain.setControl(
             m_robotCentricRequest
                 .withVelocityX(0)
